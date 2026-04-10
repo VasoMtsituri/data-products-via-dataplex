@@ -17,6 +17,8 @@ def automate_bq_insights(request):
     table_name = os.environ.get("TABLE_NAME")
     location = os.environ.get("LOCATION")
 
+    print(f'Extracted vars: {[project_id, dataset_id, table_name, location]}')
+
     client = dataplex_v1.DataScanServiceClient()
 
     # Resource paths
@@ -28,25 +30,31 @@ def automate_bq_insights(request):
     # 1. Define the Scan Specification
     # We enable catalog_publishing_enabled to ensure Gemini's
     # insights are pushed to the table metadata.
-    doc_spec = dataplex_v1.DataScan.DataDocumentationSpec(
+    doc_spec = dataplex_v1.DataDocumentationSpec(
         catalog_publishing_enabled=True
     )
 
-    data_scan = dataplex_v1.DataScan(
-        data=dataplex_v1.DataSource(resource=table_resource),
-        data_documentation_spec=doc_spec,
-        display_name=f"Gemini Insights for {table_name}",
-        execution_spec=dataplex_v1.DataScan.ExecutionSpec(
-            trigger=dataplex_v1.DataScan.ExecutionSpec.Trigger(on_demand={})
-        )
-    )
+    data_scan_config = {
+        "data": {
+            "resource": table_resource
+        },
+        "data_documentation_spec": {
+            "catalog_publishing_enabled": True
+        },
+        "display_name": f"Gemini Insights {table_name}",
+        "execution_spec": {
+            "trigger": {
+                "on_demand": {}  # This replaces ExecutionSpec and Trigger classes
+            }
+        }
+    }
 
     # 2. Create the Scan (or Get if exists)
     try:
         print(f"Creating scan: {scan_id}...")
         operation = client.create_data_scan(
             parent=parent,
-            data_scan=data_scan,
+            data_scan=data_scan_config,
             data_scan_id=scan_id
         )
         operation.result()
@@ -60,17 +68,6 @@ def automate_bq_insights(request):
 
     # 4. Wait for Completion
     # Data Documentation scans typically take 1-3 minutes as Gemini parses the data.
-    print(f"Job started: {job.job_id}. Waiting for Gemini to finish...")
+    print(f"Job started: {job}. Waiting for Gemini to finish...")
 
-    while True:
-        job_status = client.get_data_scan_job(name=f"{scan_name}/jobs/{job.job_id}")
-        state = job_status.state.name
-
-        if state == "SUCCEEDED":
-            print("Successfully generated and published descriptions!")
-            break
-        elif state in ["FAILED", "CANCELLED"]:
-            print(f"Job failed with state: {state}")
-            break
-
-        time.sleep(10)  # Poll every 10 seconds
+    return 'ok'
